@@ -1,9 +1,10 @@
 import os
 import re
+import requests
 import subprocess
 from datetime import datetime, timedelta
 from pathlib import Path
-from pandas import DataFrame, concat
+from pandas import DataFrame
 from jobspy import scrape_jobs
 
 # Try importing google search for non-LinkedIn web mode
@@ -23,6 +24,33 @@ SEARCH_TERMS = [
     "Junior Embedded Engineer"
 ]
 LOCATION = "India"
+
+TELEGRAM_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
+
+def send_telegram_message(text: str):
+    if not TELEGRAM_TOKEN or not TELEGRAM_CHAT_ID:
+        print("[!] Missing Telegram Token or Chat ID")
+        return
+    url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
+    payload = {"chat_id": TELEGRAM_CHAT_ID, "text": text, "parse_mode": "Markdown"}
+    try:
+        requests.post(url, json=payload, timeout=10)
+    except Exception as e:
+        print(f"[!] Telegram message error: {e}")
+
+def send_telegram_document(file_path: Path, caption: str):
+    if not TELEGRAM_TOKEN or not TELEGRAM_CHAT_ID:
+        print("[!] Missing Telegram Token or Chat ID")
+        return
+    url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendDocument"
+    try:
+        with open(file_path, "rb") as f:
+            files = {"document": f}
+            data = {"chat_id": TELEGRAM_CHAT_ID, "caption": caption[:1024]}
+            requests.post(url, data=data, files=files, timeout=20)
+    except Exception as e:
+        print(f"[!] Telegram document error: {e}")
 
 # Google Dorks targeting direct company career portals
 RECENT_DATE = (datetime.now() - timedelta(days=14)).strftime('%Y-%m-%d')
@@ -89,6 +117,7 @@ def run_pipeline():
 
     if not all_jobs:
         print("[!] No listings discovered.")
+        send_telegram_message("⚠️ *Embedded Job Bot*: No new jobs found today.")
         return
 
     # Deduplicate by URL
@@ -99,6 +128,7 @@ def run_pipeline():
     
     total_found = len(df)
     print(f"\n[+] Total unique roles aggregated: {total_found}")
+    send_telegram_message(f"🚀 *Daily Embedded Job Alert*\nFound *{total_found}* potential opportunities today!")
 
     # Compile LaTeX Resumes
     with open(SRC_DIR / "master_resume.tex", "r") as f:
@@ -118,11 +148,13 @@ def run_pipeline():
         company = "".join(c for c in raw_company if c.isalnum()) or f"Company_{idx+1}"
         role = str(job["title"])
         source = str(job["source"])
+        job_url = str(job["job_url"])
         
         target_app_dir = APPS_DIR / f"{today_str}_{company}"
         target_app_dir.mkdir(parents=True, exist_ok=True)
 
         tex_file = target_app_dir / "tailored.tex"
+        pdf_file = target_app_dir / "resume.pdf"
 
         with open(tex_file, "w") as f:
             f.write(tailored_latex)
@@ -142,11 +174,19 @@ def run_pipeline():
             )
             success_count += 1
             print(f"[{success_count}/{total_found}] Built Resume [{source}] -> {company} ({role})")
+
+            # Send via Telegram
+            caption = f"🏢 *{company}*\n🎯 Role: {role}\n📌 Source: {source}\n🔗 {job_url}"
+            if pdf_file.exists():
+                send_telegram_document(pdf_file, caption)
+            else:
+                send_telegram_message(caption)
+
         except Exception as e:
             print(f"[!] Compilation skipped for {company}: {e}")
 
     print("\n" + "="*60)
-    print(f"SUCCESS: Pipeline complete! {success_count}/{total_found} resumes ready in applications/")
+    print(f"SUCCESS: Pipeline complete! {success_count}/{total_found} resumes ready & sent to Telegram!")
     print("="*60 + "\n")
 
 if __name__ == "__main__":
