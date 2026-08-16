@@ -1,0 +1,20 @@
+venv/
+.venv/
+__pycache__/
+*.py[cod]
+.DS_Store
+.vscode/
+.idea/
+
+# Skip intermediate TeX build outputs
+applications/*/*.aux
+applications/*/*.log
+applications/*/*.out
+applications/*/*.fls
+applications/*/*.fdb_latexmk
+applications/*/*.synctex.gz
+
+# Keep CSV database and tailored.tex files tracked
+!applications/*.csv
+!applications/*/*.tex
+!applications/*/*.pdf
