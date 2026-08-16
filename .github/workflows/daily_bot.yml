@@ -42,4 +42,3 @@ jobs:
         with:
           commit_message: "chore: update daily job database [skip ci]"
           file_pattern: "applications/jobs_database.csv"
-          
